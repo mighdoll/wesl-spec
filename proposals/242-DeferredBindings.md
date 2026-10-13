@@ -134,7 +134,7 @@ Plain values such as `u32` are not allowed in a binding struct. Pass them as
 ### Groups and binding numbers
 
 An entry point that takes a binding struct must annotate that parameter
-with `@group(n)`, as `advance` does above.
+with `@group(n)` for now, as `advance` does above.
 
 A binding struct field with `@binding(n)` uses that number in the group.
 Other fields take the lowest free binding numbers in declaration order.
@@ -197,6 +197,7 @@ The `@buffer` annotation is now retired.
 - Binding struct fields for textures and samplers.
 - Binding structs in group 0. Today a binding struct needs a group other
   than 0, which holds the resources without binding numbers.
+- Binding struct parameters without group annotations.
 - A binding struct taken at different groups by different entry points.
   (Today every entry point that takes a struct must use the same group.)
 - Binding structs declared in a different module from their entry points.
