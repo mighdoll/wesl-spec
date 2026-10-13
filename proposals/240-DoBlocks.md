@@ -43,22 +43,23 @@ diagnostics. Other WESL tools don't yet support `wesl_do_blocks`.
 ## Enable do blocks
 
 Add `requires wesl_do_blocks;`. Here's an example you can try on
-[wgsl-play.dev](https://wgsl-play.dev/#v1=N4IgDgTg9gVgpgYwC4gFygO5wM4BsDKECaoYAhggNZkDmcqqAtmQJYB2aIEcAjgK4tu2AARY8AfQAmUcQCNcUKtgA0onLilwAZnAjdJc9pPY1sAbgA6bKwDcyEADzYkUCLTiruZAxggskcAB8wpJkSGSowvZuAJ4OfADMAEyqyYGW1mwAAghQjGB8AcJZGK6UNNB8YOLYLABecAAUACwAlFZabMJaLLi4jZLOkWBIjs6u7qrRZHGJSYGecN7ivv5Bqna4fPTCc8pWwodHh1myArhI7I00CrJkGuw2imEsUGziLJKtwp+RNogJPjfYAHELOADanwAdAAPAC6wgA1ABeYSbbYZAC+Vis0mEED4bEawNBWWM2HISAQAAtGkkgd1ev0AGShcKqemtDIncmUmktBk9PqNVlhMiqACMAAYgVirCBMcouFAoEgALJQSR8XBwAByZEYcE4zHYICVuTYxkub2wJExipAlyQOs40gAtPJFJRsG6JQqgA):
+[wgsl-play.dev](https://wgsl-play.dev/#v1=N4IgDgTg9gVgpgYwC4gFygO5wM4BsDKECaoYAhggNZkDmcqqAtmQJYB2aIEcAjgK4tu2AARY8AfQAmUcQCNcUKtgDcAHTbrpwgG5kIwyWSRlhAXmEJuRuACE+AM3twIAHj4BmAEwA+ABReASmVhEOEAejDhMlwFBGso4WwkKAhaOGFZByd9dmEAdQBRfAAZYXV1AAEEKEYwPiR0iowUyhpoPjBxbBYALzhfABYA9Xs2YXsWGN9JJNRhMCRXJJS0gBooiFSATzcvb3WrSXEMCBYG-ZCI4Tg2Ra35qHYkeb0yRjgGiGx1UN+daL49GEHk8qx+fxCFUykyQ7F8NAUsmi4nY2kURhYUDYKMkAWELEkc20iHcfDxwHBMyQAG0CQA6AAeAF1hABqcy6XCAtRsAC+5TYWggfDYvnJ4IqkhY2HISAQAAtfJ4yeNJrhpkYyOtlUEIaErlKZUYFQlqrV6ulsPKyJJnBLDbKFYMVRMpoZjOsAIwABjJPP5HF5qy4UCgSAAslBJHxcHAAHJvOCcZjsEDB6qCs6YtjYEi8oMgWFIWOcG5keRwAC00kr8kUlFzvKAA):
 
 ```wgsl
-requires wesl_do_blocks, wesl_deferred_bindings;
+requires wesl_do_blocks;
 
-var<storage, read_write> data: array<u32, 32>;
+do var data = createBuffer<u32>(32);    // allocate a storage buffer in WESL 
 
 @compute @workgroup_size(4)
-fn fill(dst: ptr<storage, array<u32>, read_write>, value: u32,
+fn fill(dst: ptr<storage, array<u32>, read_write>,  // entry point parameters
+        value: u32,
         @builtin(global_invocation_id) id: vec3u) {
   dst[id.x] += value;
 }
 
 do run() {
-  @dispatch(2u) fill(&data, 2u);
-  @dispatch(4u) fill(&data, 10u);
+  @dispatch(2u) fill(data, 2u);         // dispatch a compute shader
+  @dispatch(4u) fill(data, 10u);
 }
 ```
 
@@ -66,11 +67,8 @@ The host runs `do run()` once. The dispatches run in order. In this case,
 the first dispatch launches 2 workgroups of 4 invocations and so modifies
 the first 8 elements in the buffer. The second dispatch launches 4
 workgroups, modifying 16 elements. So the first 8 elements in the array are
-12, the next 8 elements are 10, and the final 16 elements remain untouched
-at zero.
+12, the next 8 elements are 10, and the final 16 elements remain untouched.
 
-The example also enables [deferred bindings](DeferredBindings.md), which
-let the host allocate `data` without `@group` or `@binding` numbers.
 
 ## Dispatch compute shaders
 
@@ -145,7 +143,7 @@ See [Binding structs](DeferredBindings.md#binding-structs) for details.
 
 Entry points can still take `@builtin` parameters, which the pipeline
 supplies as usual. Do blocks don't change them. 
-By convention `@builtin` paramaters come last in the parameter list.
+By convention `@builtin` parameters come last in the parameter list.
 
 ### Pass arguments
 
@@ -201,38 +199,34 @@ fn show(cells: ptr<storage, array<u32>>,
 In wgsl-play, a [main block](#control-the-main-block-from-the-ui) that calls a fragment
 entry point, directly or through another do block, runs once per frame. A
 main block w/o a fragment shader runs once and shows its buffers in the
-results panel.
+results panel: the module-scope storage vars, then the main module's
+`do var`s that hold a `createBuffer<T>(n)` result.
 
 ## Work with buffers
 
-Do code can pass and store pointers to whole buffers. (Reading or writing
-buffer contents from do code is planned but not supported yet.)
-
-### Persistent buffers
-
-Module-scope storage buffers that the host allocates (see
-[Deferred Bindings](DeferredBindings.md)) are initialized with zeros 
-at the beginning of a run, but are not cleared between frames.
+Do code can pass and store pointers to whole buffers. 
 
 ### Allocate buffers with `createBuffer<T>(n)`
 
 To create a storage buffer with a size chosen in do code, use
 `createBuffer<T>(n)`. It returns a `ptr<storage, array<T>, read_write>` to
-a new buffer of `n` elements.
+a new buffer of `n` elements. 
+Buffer contents persist across multiple dispatches in the same run.
+Buffer contents are unspecified at creation.
 
-Here's an [example on wgsl-play.dev](https://wgsl-play.dev/#v1=N4IgDgTg9gVgpgYwC4gFygO5wM4BsDKECaoYAhggNZkDmcqqAtmQJYB2aIEcAjgK4tu2AARY8AfQAmUcQCNcUKtgA0onLilwAZnAjdJc9pPY1sAbgA6bKwDcyEADzYkUCLTiruZAxggskcAB8wkJ8uEiowvZuAJ4OfADMAEyqAIyBltZs0iF8bAAUAJTCwMJaLLi4AILZ+HyM+alJABx8hWbCAL5WVjnllTWSdQ0IUHkRwolJxcBWwsK4cEjC2AhuSAgAFsIAvMJrcGQBAEJ8WjqOU4H5o+Pt8wD0D1GVikdwUSsubnTCsmcXObCAACxmw5A2m3yNzGbGWAGphAA2BJtYTPJEAFjR-Vw+VW6y27SBoJY4KOW0aaOw9Xxawpm1UADJQuFiWxullgaNGGA+AEQRhXJQaNA+GBxNgWAAvOD5LGFKxaNhlCp4yTOSJgJCOZyudyqaJkOJXTyHHx+AKBZRA+Z2kH-CpIdj5GgKWRkDTsGxvZ1QNjiFiSYpByI2RComZAlhaYRBgB0AA9hA4onpjQAZOBsGhIKEapAzYQFgDaCcTAF1dnHJEmOpzOVZuVBefyPsChRARWKJVLZY1FWxlStadgiFqdU5vga07F4slAtbbfaCxPddO6Ib0yaF2bvOJfP4glGVcI7BBhC4kJ7qwAGPiZeZaVzCfLnuN3h8f1NGmJZnN5viRD3Cw8LwkWV43vCexjggZYVvWQKlreVZ7JBuCZJ0ICdMoXBQFASAALJQJIYRwAAcmQjBwJwzDsCAuGjNk-gsP62AkJ0OEgM6SCLJwBzvAAtP85y6IJqTYUAA):
+Here's an [example on wgsl-play.dev](https://wgsl-play.dev/#v1=N4IgDgTg9gVgpgYwC4gFygO5wM4BsDKECaoYAhggNZkDmcqqAtmQJYB2aIEcAjgK4tu2AARY8AfQAmUcQCNcUKtgDcAHTbrpwgG5kIwoX1xJhAXmEJuZJHABCfAGYO4EADx8AzACYAfAAoARj4ASmVhcPCAekjhMBdsFmwkEQpobBEIPjZsdU0oAyy-YOFgYQcWXFwAQTZJfD5GQK8ADhCwgF9c2vzyypq6hr8EKCykVGFPL2LgdXDcOBNsS2sEAAszCysbeycXd29-YdHQ2eEAAUlE8iQ1vyGRthMAamEANg8Q4RjXgBZP3twfiWEBWqxObHCFyuoMCn2wg2BoIANAYcEYkKEIl8YrIoEh1no4LEoOwbBBsCi2PkAGTqToaNhnYaMMB8GznDBQCCUGjQPhgcQJABecD8v2C6gcEIBfkkSXGYCQbiSXNocBRehBAE99r4UVZJOIMBAWDYfEjTljIbIBMZ2H4aApZGRcOJ2NpFNYWFA2G7JMUWJJxtpEB9pqcWA5hIGAHQAD2ErmEmrIWoAMnA2DR8bKktNhHKkABtWNxgC6G1LHTpXSZUBZbKJZ053N5IwFwtFAQlbClwnhjWwRAVStcKpBdA1EG1up85stWMLI+VSFVk+T09Ts-1cDIhuNprgPnDEJ0emEq6QLo2AAY+GpTw4ucI-Lp9Cxb-fo4mN9qM1mcyHBBMRYJ4nnzS9ryecwgJLMtq1PQsixvCtzEg3AH3pEB2iRLgoDxABZKBJCMOAADkyEYOBOGYdgQFw4ZalNb1shIdocJAJBTXmThLF3GwAFobV2CBsKAA):
 
 ```wgsl
-requires wesl_do_blocks, wesl_deferred_bindings;
+requires wesl_do_blocks;
 
-var<storage, read_write> result: array<u32, 1>;
+do var result = createBuffer<u32>(1u);     // persists across runs
 
 do run() { fillAndSum(128u); }
 
 do fillAndSum(count: u32) {
-  let scratch = createBuffer<u32>(count);  // allocate a storage buffer
+  let scratch = createBuffer<u32>(count);
   @dispatch((count + 63u) / 64u) fill(scratch);
-  @dispatch(1u) sum(scratch, &result);
+  @dispatch(1u) sum(scratch, result);    // both are pointers, no &
 }
 
 @compute @workgroup_size(64)
@@ -256,7 +250,7 @@ Use a module-scope `do var` to keep state on the CPU,
 such as the buffer pointers in the draw example or a counter declared as
 `do var frame = 0u;`. Do vars run their initializers on the first run.
 
-do var typs are inferred as in WGSL.
+do var types are inferred as in WGSL.
 For example, `do var time = 0;` holds an `i32`, so write
 `do var time: f32 = 0;` to accumulate `u.delta_time`. Unlike WGSL, a
 do-code `var` can hold a pointer.
@@ -266,8 +260,8 @@ pointer refers to. It does not copy buffer contents. To read do vars from
 JavaScript, use wgsl-play's [`readVars()`](README.md#reading-shader-state).
 
 In wgsl-play, rewind, changing a `@rewind` control, and
-[`replayTo()`](README.md#replaying-to-a-time) reset the program:
-host-allocated buffers return to zero, and do vars run their initializers
+[`replayTo()`](README.md#replaying-to-a-time) reset the program.
+Module-scope storage buffers are reset to zero, and do vars run their initializers
 again on the next run. 
 
 ## Call other do blocks
@@ -290,6 +284,23 @@ without an annotation receives 0.
 Import do blocks, do vars, and entry points as ordinary WESL declarations,
 then call or dispatch them from your main block. Entry point buffer and
 value parameters work across modules.
+
+Libraries should take needed resources as ptr parameters, and construct
+internal buffers with `createBuffer()`: 
+
+```wgsl
+const workgroupSize = 64u;
+
+/// sum first len elements of src into dst[0]
+public do blockSum(src: ptr<storage, array<u32>>,
+                   dst: ptr<storage, array<u32>, read_write>, 
+                   len: u32) {
+  let numBlocks = (len + workgroupSize - 1) / workgroupSize;
+  let partials = createBuffer<u32>(numBlocks);   // library private buffer
+  @dispatch(numBlocks) sumBlocks(src, partials, len);
+  @dispatch(1u) sumPartials(partials, dst, numBlocks);
+}
+```
 
 ## Test do blocks
 
@@ -338,7 +349,8 @@ So one WESL program describes both the GPU work and its orchestration.
 
 Do code differs from WGSL in some ways:
 
-- Extensions like `createBuffer()` and `@dispatch` only work from do blocks.
+- Extensions like `createBuffer()` and `@dispatch` only work from 
+  do blocks and do var initializers.
 - Do block calls can be recursive.
 - A `var` or `do var` can hold a pointer to a buffer and be reassigned to
   swap buffers. 
@@ -357,11 +369,14 @@ Not supported yet:
 - Calling const shader functions from do blocks. 
 - Operators on whole vectors or matrices. Operators work on scalars.
 - Indexing with `[i]`, on buffers or on constructed arrays.
+  Reading or writing buffer contents from do code is planned but not supported yet.
 - Assigning struct fields and vector components.
 - Bit-manipulation and packing builtins.
+- createTexture()
+- Public API to run do blocks from JavaScript
 
 With [module parameters](https://github.com/webgpu-tools/wesl-spec/blob/main/proposals/222-ModuleParameters.md), do code will read parameters too. So e.g., one module parameter can set a
-compute shaders's `@workgroup_size` as well as the dispatch count in the do block that runs the shader.
+compute shader's `@workgroup_size` as well as the dispatch count in the do block that runs the shader.
 
 ## Examples
 
